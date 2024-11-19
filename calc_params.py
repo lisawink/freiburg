@@ -1,10 +1,44 @@
 import pandas as pd
 import geopandas as gpd
 import momepy
-from libpysal import graph
+import libpysal
+import geoplanar
 
 
 def block_params(buildings,height,streets):
+
+    """
+    Extracts the following parameters for each building and street segment in the city:
+    - dimension
+    - courtyards
+    - shape
+    - proximity
+    - streets
+    - intensity
+    - connectivity
+    - COINS
+
+    Parameters
+    ----------
+    buildings : GeoDataFrame
+        GeoDataFrame containing building footprints
+    height : float
+        Series containing building heights
+    streets : GeoDataFrame
+        GeoDataFrame containing street segments
+
+    Returns
+    -------
+    bldgs : GeoDataFrame
+        GeoDataFrame containing building parameters
+    streets : GeoDataFrame
+        GeoDataFrame containing street parameters
+    nodes : GeoDataFrame
+        GeoDataFrame containing nodes
+    edges : GeoDataFrame
+        GeoDataFrame containing edges
+
+    """
 
     bldgs = buildings.copy()
 
@@ -37,11 +71,12 @@ def block_params(buildings,height,streets):
     bldgs['SWR'] = momepy.shared_walls(bldgs)/bldgs['BuPer']
     bldgs['BuOri'] = momepy.orientation(bldgs)
 
-    delaunay = graph.Graph.build_triangulation(bldgs.centroid).assign_self_weight()
+    delaunay = libpysal.graph.Graph.build_triangulation(geoplanar.trim_overlaps(bldgs).centroid).assign_self_weight()
     bldgs['AliOri'] = momepy.alignment(bldgs['BuOri'], delaunay)
 
     # streets
     bldgs["street_index"] = momepy.get_nearest_street(bldgs, streets)
+    streets['StrLen'] = streets.geometry.length
 
     # street alignment
     str_orient = momepy.orientation(streets)
@@ -51,14 +86,42 @@ def block_params(buildings,height,streets):
     streets[['StrW','StrOp','StrWD','StrH','StrHD','StrHW']] = momepy.street_profile(streets, bldgs, height=height)
 
     # intensity
-    ######### NEED TO FIX THIS
-    #streets['BpM'] = momepy.describe_agg(bldgs['BuAre'], bldgs["street_index"], statistics=["count"]) / streets.length
+    building_count = momepy.describe_agg(bldgs['BuAre'], bldgs["street_index"], statistics=["count"])
+    streets = streets.merge(building_count, left_on=streets.index, right_on='street_index', how='left')
+    streets['BpM'] = streets['count'] / streets.length
 
     #shape
-
     streets['StrLin'] = momepy.linearity(streets)
 
-    return bldgs, streets
+    #connectivity
+ 
+    graph = momepy.gdf_to_nx(streets)
+    graph = momepy.closeness_centrality(graph, radius=400, name="StrClo400", distance="mm_len", weight="mm_len")
+    graph = momepy.closeness_centrality(graph, radius=1200, name="StrClo1200", distance="mm_len", weight="mm_len")
+    graph = momepy.betweenness_centrality(graph, radius=400, name="StrBet400", distance="mm_len", weight="mm_len")
+    graph = momepy.betweenness_centrality(graph, radius=1200, name="Strbet1200", distance="mm_len", weight="mm_len")
+    graph = momepy.meshedness(graph, radius=400, distance="mm_len", name="StrMes400")
+    graph = momepy.meshedness(graph, radius=1200, distance="mm_len", name="StrMes1200")
+    graph = momepy.gamma(graph, radius=400, distance="mm_len", name="StrGam400")
+    graph = momepy.gamma(graph, radius=1200, distance="mm_len", name="StrGam1200")
+    graph = momepy.cyclomatic(graph, radius=400, distance="mm_len", name="StrCyc400")
+    graph = momepy.cyclomatic(graph, radius=1200, distance="mm_len", name="StrCyc1200")
+    graph = momepy.edge_node_ratio(graph, radius=400, distance="mm_len", name="StrENR400")
+    graph = momepy.edge_node_ratio(graph, radius=1200, distance="mm_len", name="StrENR1200")
+    graph = momepy.node_degree(graph, name='StrDeg')
+    graph = momepy.clustering(graph, name='StrSCl')
+    #graph = momepy.betweenness_centrality(graph, name="StrBetGlo", mode="nodes", weight="mm_len") # will take ages
+    nodes, edges = momepy.nx_to_gdf(graph)
+
+    #COINS
+    coins = momepy.COINS(streets)
+    stroke_gdf = coins.stroke_gdf()
+    stroke_attr = coins.stroke_attribute()
+    streets['COINS_index'] = stroke_attr
+    streets = streets.merge(stroke_gdf, left_on='COINS_index', right_on='stroke_group')
+    streets['Str_CNS']=streets['geometry_y'].length
+
+    return bldgs, streets, nodes
 
 def aggregate_block_params(buildings, streets, stations, radius=100):
 
