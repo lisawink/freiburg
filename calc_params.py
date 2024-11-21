@@ -123,7 +123,7 @@ def block_params(buildings,height,streets):
 
     return bldgs, streets, nodes
 
-def aggregate_block_params(buildings, streets, stations, radius=100):
+def aggregate_block_params(buildings, streets, nodes, stations, radius=100):
 
     # select buildings whose area is at least 50% within the station buffer
 
@@ -134,6 +134,7 @@ def aggregate_block_params(buildings, streets, stations, radius=100):
     # Perform a spatial join to find buildings that intersect with station buffers
     joined_buildings = gpd.sjoin(buildings, stations, how='inner', predicate='intersects')
     joined_streets = gpd.sjoin(streets, stations, how='inner', predicate='intersects')
+    joined_nodes = gpd.sjoin(nodes, stations, how='inner', predicate='intersects')
 
     # Calculate the intersection area for each building-station pair
     joined_buildings['intersection_area'] = joined_buildings.apply(
@@ -144,6 +145,11 @@ def aggregate_block_params(buildings, streets, stations, radius=100):
         lambda row: row.geometry.intersection(stations.loc[row['index_right']].geometry).length, axis=1
     )
 
+    # Calculate the intersection area for each building-station pair
+    joined_nodes['intersection_length'] = joined_nodes.apply(
+        lambda row: row.geometry.intersection(stations.loc[row['index_right']].geometry).length, axis=1
+    )
+
     # Calculate the percentage of each building's area that is within each station buffer
     joined_buildings['percentage_within_buffer'] = (joined_buildings['intersection_area'] / joined_buildings['area']) * 100
     joined_streets['percentage_within_buffer'] = (joined_streets['intersection_length'] / joined_streets['length']) * 100
@@ -151,6 +157,7 @@ def aggregate_block_params(buildings, streets, stations, radius=100):
     # Select buildings where this percentage is at least 50%
     selected_buildings = joined_buildings[joined_buildings['percentage_within_buffer'] >= 50]
     selected_streets = joined_streets[joined_streets['percentage_within_buffer'] >= 50]
+    selected_nodes = joined_nodes
 
     # Output the selected buildings
     selected_buildings = selected_buildings.drop(columns=['index_right'])
@@ -163,8 +170,12 @@ def aggregate_block_params(buildings, streets, stations, radius=100):
         df[[i+'_count',i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum' ,i+'_nunique',i+'_mode']] = momepy.describe_agg(selected_buildings[i], selected_buildings["station_id"])
         station_df = pd.concat([station_df, df], axis=1)
 
-    for i in ['StrW','StrOp','StrWD','StrH','StrHD','StrHW','StrLin']:
+    for i in ['StrLen', 'StrW', 'StrOp', 'StrWD', 'StrH', 'StrHD', 'StrHW', 'BpM', 'StrLin', 'Str_CNS']:
         df[[i+'_count',i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum' ,i+'_nunique',i+'_mode']] = momepy.describe_agg(selected_streets[i], selected_streets["station_id"])
+        station_df = pd.concat([station_df, df], axis=1)
+
+    for i in ['StrClo400', 'StrClo1200', 'StrBet400', 'Strbet1200', 'StrMes400', 'StrMes1200', 'StrGam400', 'StrGam1200', 'StrCyc400', 'StrCyc1200', 'StrENR400', 'StrENR1200', 'StrDeg', 'StrSCl']:
+        df[[i+'_count',i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum' ,i+'_nunique',i+'_mode']] = momepy.describe_agg(selected_nodes[i], selected_nodes["station_id"])
         station_df = pd.concat([station_df, df], axis=1)
 
     return station_df
