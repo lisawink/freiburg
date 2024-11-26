@@ -71,6 +71,8 @@ def block_params(buildings,height,streets):
     bldgs['SWR'] = momepy.shared_walls(bldgs)/bldgs['BuPer']
     bldgs['BuOri'] = momepy.orientation(bldgs)
 
+    ## building adjacency
+
     delaunay = libpysal.graph.Graph.build_triangulation(geoplanar.trim_overlaps(bldgs).centroid).assign_self_weight()
     bldgs['AliOri'] = momepy.alignment(bldgs['BuOri'], delaunay)
 
@@ -136,6 +138,13 @@ def aggregate_block_params(buildings, streets, nodes, stations, radius=100):
     joined_streets = gpd.sjoin(streets, stations, how='inner', predicate='intersects')
     joined_nodes = gpd.sjoin(nodes, stations, how='inner', predicate='intersects')
 
+    print(joined_buildings.geometry)
+
+    # Ensure geodataframes have a column named geometry
+    joined_buildings['geometry'] = joined_buildings.geometry
+    joined_streets['geometry'] = joined_streets.geometry
+    joined_nodes['geometry'] = joined_nodes.geometry
+
     # Calculate the intersection area for each building-station pair
     joined_buildings['intersection_area'] = joined_buildings.apply(
         lambda row: row.geometry.intersection(stations.loc[row['index_right']].geometry).area, axis=1
@@ -163,22 +172,19 @@ def aggregate_block_params(buildings, streets, nodes, stations, radius=100):
     selected_buildings = selected_buildings.drop(columns=['index_right'])
     selected_streets = selected_streets.drop(columns=['index_right'])
     
-    station_df = pd.DataFrame()
+    #station_df = pd.DataFrame()
     df = pd.DataFrame()
     for i in ['BuAre','BuPer','BuLAL','BuCCD_mean','BuCCD_std','BuCor','CyAre','CyInd','BuCCo','BuCWA','BuCon','BuElo','BuERI','BuFR','BuFF','BuFD','BuRec','BuShI','BuSqC','BuSqu','SWR','BuOri','AliOri','StrAli']:
         buildings[i] = buildings[i].astype(float)
         df[[i+'_count',i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum' ,i+'_nunique',i+'_mode']] = momepy.describe_agg(selected_buildings[i], selected_buildings["station_id"])
-        station_df = pd.concat([station_df, df], axis=1)
+        #station_df = pd.concat([station_df, df], axis=1)
 
     for i in ['StrLen', 'StrW', 'StrOp', 'StrWD', 'StrH', 'StrHD', 'StrHW', 'BpM', 'StrLin', 'Str_CNS']:
         df[[i+'_count',i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum' ,i+'_nunique',i+'_mode']] = momepy.describe_agg(selected_streets[i], selected_streets["station_id"])
-        station_df = pd.concat([station_df, df], axis=1)
+        #station_df = pd.concat([station_df, df], axis=1)
 
     for i in ['StrClo400', 'StrClo1200', 'StrBet400', 'Strbet1200', 'StrMes400', 'StrMes1200', 'StrGam400', 'StrGam1200', 'StrCyc400', 'StrCyc1200', 'StrENR400', 'StrENR1200', 'StrDeg', 'StrSCl']:
         df[[i+'_count',i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum' ,i+'_nunique',i+'_mode']] = momepy.describe_agg(selected_nodes[i], selected_nodes["station_id"])
-        station_df = pd.concat([station_df, df], axis=1)
+        #station_df = pd.concat([station_df, df], axis=1)
 
-    return station_df
-
-def aggregate_neighborhood_params():
-    return None
+    return df
