@@ -3,7 +3,16 @@ import geopandas as gpd
 import momepy
 import libpysal
 import geoplanar
+from itertools import combinations
+from shapely.geometry import Point
 
+def buffer_stations(stations, radius=100):
+    geometry = [Point(xy) for xy in zip(stations['station_lon'], stations['station_lat'])]
+    crs = 'EPSG:4326'
+    stn_gdf = gpd.GeoDataFrame(stations, crs=crs, geometry=geometry)
+    stn_gdf = stn_gdf.to_crs('EPSG:31468')
+    stn_gdf['geometry'] = stn_gdf.buffer(radius)
+    return stn_gdf
 
 def block_params(buildings,height,streets):
 
@@ -44,6 +53,7 @@ def block_params(buildings,height,streets):
 
     # dimension
     bldgs['BuAre'] = bldgs.geometry.area
+    bldgs['BuHt'] = height
     bldgs['BuPer'] = bldgs.geometry.length
     bldgs['BuLAL'] = momepy.longest_axis_length(bldgs)
     bldgs[['BuCCD_mean','BuCCD_std']] = momepy.centroid_corner_distance(bldgs)
@@ -68,13 +78,13 @@ def block_params(buildings,height,streets):
     bldgs['BuSqu'] = momepy.squareness(bldgs)
 
     # proximity
-    bldgs['SWR'] = momepy.shared_walls(bldgs)/bldgs['BuPer']
+    bldgs['BuSWR'] = momepy.shared_walls(bldgs)/bldgs['BuPer']
     bldgs['BuOri'] = momepy.orientation(bldgs)
 
     ## building adjacency
 
     delaunay = libpysal.graph.Graph.build_triangulation(geoplanar.trim_overlaps(bldgs).centroid).assign_self_weight()
-    bldgs['AliOri'] = momepy.alignment(bldgs['BuOri'], delaunay)
+    bldgs['BuAli'] = momepy.alignment(bldgs['BuOri'], delaunay)
 
     # streets
     bldgs["street_index"] = momepy.get_nearest_street(bldgs, streets)
@@ -85,7 +95,7 @@ def block_params(buildings,height,streets):
     bldgs['StrAli'] = momepy.street_alignment(momepy.orientation(bldgs), str_orient, bldgs["street_index"])
 
     # street profile
-    streets[['StrW','StrOp','StrWD','StrH','StrHD','StrHW']] = momepy.street_profile(streets, bldgs, height=height)
+    streets[['StrW','StrOpe','StrWD','StrH','StrHD','StrHW']] = momepy.street_profile(streets, bldgs, height=height)
 
     # intensity
     building_count = momepy.describe_agg(bldgs['BuAre'], bldgs["street_index"], statistics=["count"])
@@ -101,7 +111,7 @@ def block_params(buildings,height,streets):
     graph = momepy.closeness_centrality(graph, radius=400, name="StrClo400", distance="mm_len", weight="mm_len")
     graph = momepy.closeness_centrality(graph, radius=1200, name="StrClo1200", distance="mm_len", weight="mm_len")
     graph = momepy.betweenness_centrality(graph, radius=400, name="StrBet400", distance="mm_len", weight="mm_len")
-    graph = momepy.betweenness_centrality(graph, radius=1200, name="Strbet1200", distance="mm_len", weight="mm_len")
+    graph = momepy.betweenness_centrality(graph, radius=1200, name="StrBet1200", distance="mm_len", weight="mm_len")
     graph = momepy.meshedness(graph, radius=400, distance="mm_len", name="StrMes400")
     graph = momepy.meshedness(graph, radius=1200, distance="mm_len", name="StrMes1200")
     graph = momepy.gamma(graph, radius=400, distance="mm_len", name="StrGam400")
@@ -121,9 +131,58 @@ def block_params(buildings,height,streets):
     stroke_attr = coins.stroke_attribute()
     streets['COINS_index'] = stroke_attr
     streets = streets.merge(stroke_gdf, left_on='COINS_index', right_on='stroke_group')
-    streets['Str_CNS']=streets['geometry_y'].length
+    streets['StrCNS']=streets['geometry_y'].length
 
     return bldgs, streets, nodes
+
+def neighbourhood_graph_params(buildings, stations):
+    
+    buildings = geoplanar.trim_overlaps(buildings)
+    overlapping = buildings.sjoin(stations,predicate='within',how='inner')
+    
+    # create libpysal graph of the buildings in overlapping for each station id
+    libpysal_graphs = {}
+    
+    for stn_id in overlapping['station_id'].unique():
+
+        ol_buildings = overlapping[overlapping['station_id'] == stn_id]
+        
+        # Generate all unique pairs of indices as adjacency list
+        adjacency_list = [(i, j) for i, j in combinations(ol_buildings.index, 2)]
+
+        # Add symmetric pairs to make it undirected (i.e., (i, j) and (j, i))
+        adjacency_list += [(j, i) for i, j in adjacency_list]
+
+        # Create a DataFrame from the adjacency list
+        adjacency_df = pd.DataFrame(adjacency_list, columns=['focal', 'neighbor'])
+        adjacency_df['weight'] = 1  # Assign a default weight of 1
+
+        ref_area_graph = libpysal.graph.Graph.from_adjacency(adjacency_df)
+
+        libpysal_graphs[stn_id] = ref_area_graph
+
+        #calculate bua
+        contig = libpysal.graph.Graph.build_contiguity(ol_buildings)
+        bua = momepy.building_adjacency(contig, ref_area_graph)
+        ol_buildings['BuAdj'] = bua
+
+        #calculate ibd
+        if len(ol_buildings) <= 2:
+            ol_buildings['BuIBD'] = None
+        else:
+            delaunay = libpysal.graph.Graph.build_triangulation(ol_buildings.centroid).assign_self_weight()
+            ibd = momepy.mean_interbuilding_distance(ol_buildings, delaunay, ref_area_graph)
+            ol_buildings['BuIBD'] = ibd
+
+        for k in ol_buildings.index:
+            overlapping.loc[k, ['BuAdj','BuIBD']] = ol_buildings.loc[k, ['BuAdj','BuIBD']]
+
+    bua = overlapping.groupby('station_id')['BuAdj'].mean()
+    ibd = overlapping.groupby('station_id')['BuIBD'].mean()
+    stations = stations.merge(bua, left_on='station_id', right_on=bua.index)
+    stations = stations.merge(ibd, left_on='station_id', right_on=ibd.index)
+    
+    return stations
 
 def aggregate_block_params(buildings, streets, nodes, stations, radius=100):
 
@@ -137,8 +196,6 @@ def aggregate_block_params(buildings, streets, nodes, stations, radius=100):
     joined_buildings = gpd.sjoin(buildings, stations, how='inner', predicate='intersects')
     joined_streets = gpd.sjoin(streets, stations, how='inner', predicate='intersects')
     joined_nodes = gpd.sjoin(nodes, stations, how='inner', predicate='intersects')
-
-    print(joined_buildings.geometry)
 
     # Ensure geodataframes have a column named geometry
     joined_buildings['geometry'] = joined_buildings.geometry
@@ -174,16 +231,16 @@ def aggregate_block_params(buildings, streets, nodes, stations, radius=100):
     
     #station_df = pd.DataFrame()
     df = pd.DataFrame()
-    for i in ['BuAre','BuPer','BuLAL','BuCCD_mean','BuCCD_std','BuCor','CyAre','CyInd','BuCCo','BuCWA','BuCon','BuElo','BuERI','BuFR','BuFF','BuFD','BuRec','BuShI','BuSqC','BuSqu','SWR','BuOri','AliOri','StrAli']:
+    for i in ['BuAre','BuHt','BuPer','BuLAL','BuCCD_mean','BuCCD_std','BuCor','CyAre','CyInd','BuCCo','BuCWA','BuCon','BuElo','BuERI','BuFR','BuFF','BuFD','BuRec','BuShI','BuSqC','BuSqu','BuSWR','BuOri','BuAli','StrAli']:
         buildings[i] = buildings[i].astype(float)
         df[[i+'_count',i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum' ,i+'_nunique',i+'_mode']] = momepy.describe_agg(selected_buildings[i], selected_buildings["station_id"])
         #station_df = pd.concat([station_df, df], axis=1)
 
-    for i in ['StrLen', 'StrW', 'StrOp', 'StrWD', 'StrH', 'StrHD', 'StrHW', 'BpM', 'StrLin', 'Str_CNS']:
+    for i in ['StrLen', 'StrW', 'StrOpe', 'StrWD', 'StrH', 'StrHD', 'StrHW', 'BpM', 'StrLin', 'StrCNS']:
         df[[i+'_count',i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum' ,i+'_nunique',i+'_mode']] = momepy.describe_agg(selected_streets[i], selected_streets["station_id"])
         #station_df = pd.concat([station_df, df], axis=1)
 
-    for i in ['StrClo400', 'StrClo1200', 'StrBet400', 'Strbet1200', 'StrMes400', 'StrMes1200', 'StrGam400', 'StrGam1200', 'StrCyc400', 'StrCyc1200', 'StrENR400', 'StrENR1200', 'StrDeg', 'StrSCl']:
+    for i in ['StrClo400', 'StrClo1200', 'StrBet400', 'StrBet1200', 'StrMes400', 'StrMes1200', 'StrGam400', 'StrGam1200', 'StrCyc400', 'StrCyc1200', 'StrENR400', 'StrENR1200', 'StrDeg', 'StrSCl']:
         df[[i+'_count',i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum' ,i+'_nunique',i+'_mode']] = momepy.describe_agg(selected_nodes[i], selected_nodes["station_id"])
         #station_df = pd.concat([station_df, df], axis=1)
 
