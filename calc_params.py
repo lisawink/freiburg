@@ -6,13 +6,34 @@ import geoplanar
 from itertools import combinations
 from shapely.geometry import Point
 
-def buffer_stations(stations, radius=100):
+def buffer_stations(stations, radius=100, input_crs='EPSG:4326', output_crs='EPSG:31468'):
+    
     geometry = [Point(xy) for xy in zip(stations['station_lon'], stations['station_lat'])]
-    crs = 'EPSG:4326'
-    stn_gdf = gpd.GeoDataFrame(stations, crs=crs, geometry=geometry)
-    stn_gdf = stn_gdf.to_crs('EPSG:31468')
+    stn_gdf = gpd.GeoDataFrame(stations, crs=input_crs, geometry=geometry)
+    stn_gdf = stn_gdf.to_crs(output_crs)
     stn_gdf['geometry'] = stn_gdf.buffer(radius)
     return stn_gdf
+
+def random_buffers(buildings, number=50, radius=100):
+    """
+    Generates buffers of set radius around random buildings
+
+    """
+    random_building_buffers = buildings.sample(n=number)
+    random_building_buffers['geometry'] = random_building_buffers.centroid.buffer(radius)
+    random_building_buffers.set_geometry('geometry', inplace=True)
+    return random_building_buffers
+
+def random_buffers(buildings, number=50, radius=100):
+    """
+    Generates buffers of set radius around random buildings
+
+    """
+    random_building_buffers = buildings.sample(n=number)
+    random_building_buffers['geometry'] = random_building_buffers.centroid.buffer(radius)
+    random_building_buffers.set_geometry('geometry', inplace=True)
+    return random_building_buffers
+
 
 def block_params(buildings,height,streets):
 
@@ -136,6 +157,27 @@ def block_params(buildings,height,streets):
     return bldgs, streets, nodes
 
 def neighbourhood_graph_params(buildings, stations):
+    """
+    
+    Extracts the following parameters for each station:
+    - Building adjacency
+    - Interbuilding distance
+        
+        
+        
+    Parameters
+    ----------
+    buildings : GeoDataFrame
+        GeoDataFrame containing building footprints
+        stations : GeoDataFrame
+        GeoDataFrame containing station buffers
+
+    Returns
+    -------
+    stations : GeoDataFrame
+        GeoDataFrame containing station parameters
+    
+    """
     
     buildings = geoplanar.trim_overlaps(buildings)
     overlapping = buildings.sjoin(stations,predicate='within',how='inner')
@@ -184,7 +226,29 @@ def neighbourhood_graph_params(buildings, stations):
     
     return stations
 
-def aggregate_block_params(buildings, streets, nodes, stations, radius=100):
+def select_objects(buildings, streets, nodes, stations):
+    """
+
+    Selects the buildings, streets and nodes for each station
+
+
+    Parameters
+    ----------
+    buildings : GeoDataFrame
+        GeoDataFrame containing building parameters
+    streets : GeoDataFrame
+        GeoDataFrame containing street parameters
+    nodes : GeoDataFrame
+        GeoDataFrame containing node parameters
+    stations : GeoDataFrame
+        GeoDataFrame containing station buffers
+
+    Returns
+    -------
+    df : DataFrame
+        DataFrame containing aggregated parameters for each station
+
+    """
 
     # select buildings whose area is at least 50% within the station buffer
 
@@ -217,8 +281,8 @@ def aggregate_block_params(buildings, streets, nodes, stations, radius=100):
     )
 
     # Calculate the percentage of each building's area that is within each station buffer
-    joined_buildings['percentage_within_buffer'] = (joined_buildings['intersection_area'] / joined_buildings['area']) * 100
-    joined_streets['percentage_within_buffer'] = (joined_streets['intersection_length'] / joined_streets['length']) * 100
+    joined_buildings['percentage_within_buffer'] = (joined_buildings['intersection_area'] / joined_buildings.geometry.area) * 100
+    joined_streets['percentage_within_buffer'] = (joined_streets['intersection_length'] / joined_streets.geometry.length) * 100
 
     # Select buildings where this percentage is at least 50%
     selected_buildings = joined_buildings[joined_buildings['percentage_within_buffer'] >= 50]
@@ -229,11 +293,17 @@ def aggregate_block_params(buildings, streets, nodes, stations, radius=100):
     selected_buildings = selected_buildings.drop(columns=['index_right'])
     selected_streets = selected_streets.drop(columns=['index_right'])
     
+    return selected_buildings, selected_streets, selected_nodes
+
+def aggregate_params(selected_buildings, selected_streets, selected_nodes):
+    
     #station_df = pd.DataFrame()
     df = pd.DataFrame()
     for i in ['BuAre','BuHt','BuPer','BuLAL','BuCCD_mean','BuCCD_std','BuCor','CyAre','CyInd','BuCCo','BuCWA','BuCon','BuElo','BuERI','BuFR','BuFF','BuFD','BuRec','BuShI','BuSqC','BuSqu','BuSWR','BuOri','BuAli','StrAli']:
-        buildings[i] = buildings[i].astype(float)
+        #buildings[i] = buildings[i].astype(float)
         df[[i+'_count',i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum' ,i+'_nunique',i+'_mode']] = momepy.describe_agg(selected_buildings[i], selected_buildings["station_id"])
+        from scipy.stats import iqr
+        df[i+'_IQR'] = selected_buildings[id].groupby('station_id')[i].agg(iqr, engine="numba")
         #station_df = pd.concat([station_df, df], axis=1)
 
     for i in ['StrLen', 'StrW', 'StrOpe', 'StrWD', 'StrH', 'StrHD', 'StrHW', 'BpM', 'StrLin', 'StrCNS']:
