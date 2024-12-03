@@ -5,6 +5,9 @@ import libpysal
 import geoplanar
 from itertools import combinations
 from shapely.geometry import Point
+from scipy.stats import iqr
+from scipy.stats import median_abs_deviation
+from scipy.stats import skew
 
 def buffer_stations(stations, radius=100, input_crs='EPSG:4326', output_crs='EPSG:31468'):
     
@@ -295,23 +298,23 @@ def select_objects(buildings, streets, nodes, stations):
     
     return selected_buildings, selected_streets, selected_nodes
 
-def aggregate_params(selected_buildings, selected_streets, selected_nodes):
+def aggregate_params(selected_buildings, selected_streets, selected_nodes, stations):
     
     #station_df = pd.DataFrame()
     df = pd.DataFrame()
     for i in ['BuAre','BuHt','BuPer','BuLAL','BuCCD_mean','BuCCD_std','BuCor','CyAre','CyInd','BuCCo','BuCWA','BuCon','BuElo','BuERI','BuFR','BuFF','BuFD','BuRec','BuShI','BuSqC','BuSqu','BuSWR','BuOri','BuAli','StrAli']:
         #buildings[i] = buildings[i].astype(float)
         df[[i+'_count',i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum' ,i+'_nunique',i+'_mode']] = momepy.describe_agg(selected_buildings[i], selected_buildings["station_id"])
-        from scipy.stats import iqr
-        df[i+'_IQR'] = selected_buildings[id].groupby('station_id')[i].agg(iqr, engine="numba")
-        #station_df = pd.concat([station_df, df], axis=1)
+        df[[i+'_IQR',i+'_MAD',i+'_skew']] = selected_buildings.groupby('station_id')[i].agg([iqr,median_abs_deviation,skew])
 
     for i in ['StrLen', 'StrW', 'StrOpe', 'StrWD', 'StrH', 'StrHD', 'StrHW', 'BpM', 'StrLin', 'StrCNS']:
         df[[i+'_count',i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum' ,i+'_nunique',i+'_mode']] = momepy.describe_agg(selected_streets[i], selected_streets["station_id"])
-        #station_df = pd.concat([station_df, df], axis=1)
+        df[[i+'_IQR',i+'_MAD',i+'_skew']] = selected_streets.groupby('station_id')[i].agg([iqr,median_abs_deviation,skew])
 
     for i in ['StrClo400', 'StrClo1200', 'StrBet400', 'StrBet1200', 'StrMes400', 'StrMes1200', 'StrGam400', 'StrGam1200', 'StrCyc400', 'StrCyc1200', 'StrENR400', 'StrENR1200', 'StrDeg', 'StrSCl']:
         df[[i+'_count',i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum' ,i+'_nunique',i+'_mode']] = momepy.describe_agg(selected_nodes[i], selected_nodes["station_id"])
-        #station_df = pd.concat([station_df, df], axis=1)
+        df[[i+'_IQR',i+'_MAD',i+'_skew']] = selected_nodes.groupby('station_id')[i].agg([iqr,median_abs_deviation,skew])
 
-    return df
+    stations = stations.merge(df, left_on='station_id', right_on=df.index, how='inner')
+
+    return stations
