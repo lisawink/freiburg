@@ -8,6 +8,8 @@ from shapely.geometry import Point
 from scipy.stats import iqr
 from scipy.stats import median_abs_deviation
 from scipy.stats import skew
+import rasterio
+from rasterstats import zonal_stats
 
 def buffer_stations(stations, radius=100, input_crs='EPSG:4326', output_crs='EPSG:31468'):
     
@@ -166,8 +168,6 @@ def neighbourhood_graph_params(buildings, stations):
     - Building adjacency
     - Interbuilding distance
         
-        
-        
     Parameters
     ----------
     buildings : GeoDataFrame
@@ -316,5 +316,43 @@ def aggregate_params(selected_buildings, selected_streets, selected_nodes, stati
         df[[i+'_IQR',i+'_MAD',i+'_skew']] = selected_nodes.groupby('station_id')[i].agg([iqr,median_abs_deviation,skew])
 
     stations = stations.merge(df, left_on='station_id', right_on=df.index, how='inner')
+
+    return stations
+
+def agg_raster(raster_path, stations, parameter_name):
+    """
+    Extracts the following parameters for each station:
+    - Raster mean
+    - Raster median
+    - Raster standard deviation
+    - Raster IQR
+
+    Parameters
+    ----------
+    raster_path : ndarray
+        Raster path
+    stations : GeoDataFrame
+        GeoDataFrame containing station buffers
+    parameter_name : str
+        Name of the raster parameter
+        
+    Returns
+    -------
+    stations : GeoDataFrame
+        GeoDataFrame containing raster parameters
+
+    """
+    with rasterio.open(raster_path) as src:
+        crs = src.crs
+    stations = stations.to_crs(crs.to_epsg())
+
+    stats = zonal_stats(stations, raster_path, stats=['mean', 'max', 'min', 'count', 'std', 'median', 'sum', 'range','percentile_25','percentile_75'])
+
+    stations[parameter_name] = stats
+
+    stations[parameter_name+'_mean'] = stations[parameter_name].apply(lambda x: x['mean'])
+    stations[parameter_name+'_std'] = stations[parameter_name].apply(lambda x: x['std'])
+    stations[parameter_name+'_median'] = stations[parameter_name].apply(lambda x: x['median'])
+    stations[parameter_name+'_IQR'] = stations[parameter_name].apply(lambda x: x['percentile_75']) - stations[parameter_name].apply(lambda x: x['percentile_25'])
 
     return stations
