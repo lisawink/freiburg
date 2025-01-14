@@ -101,7 +101,7 @@ def block_params(buildings,height,streets):
     bldgs['BuRec'] = momepy.rectangularity(bldgs)
     bldgs['BuShI'] = momepy.shape_index(bldgs, bldgs['BuLAL'])
     bldgs['BuSqC'] = momepy.square_compactness(bldgs)
-    bldgs['BuSqu'] = momepy.squareness(bldgs)
+    bldgs['BuCorDev'] = momepy.squareness(bldgs)
 
     # proximity
     bldgs['BuSWR'] = momepy.shared_walls(bldgs)/bldgs['BuPer']
@@ -302,7 +302,9 @@ def aggregate_params(selected_buildings, selected_streets, selected_nodes, stati
     
     #station_df = pd.DataFrame()
     df = pd.DataFrame()
-    for i in ['BuAre','BuHt','BuPer','BuLAL','BuCCD_mean','BuCCD_std','BuCor','CyAre','CyInd','BuCCo','BuCWA','BuCon','BuElo','BuERI','BuFR','BuFF','BuFD','BuRec','BuShI','BuSqC','BuSqu','BuSWR','BuOri','BuAli','StrAli']:
+    for i in ['BuAre','BuHt','BuPer','BuLAL','BuCCD_mean','BuCCD_std','BuCor','CyAre','CyInd','BuCCo','BuCWA','BuCon','BuElo','BuERI','BuFR','BuFF','BuFD','BuRec','BuShI','BuSqC','BuCorDev','BuSWR','BuOri','BuAli','StrAli',
+              'BuCir', 'BuHem_3D', 'BuCon_3D', 'BuFra', 'BuFra_3D', 'BuCubo_3D', 'BuSqu', 'BuCube_3D', 'BumVE_3D', 'BuMVE_3D', 'BuFF_3D', 'BuEPI_3D', 'BuProx', 'BuProx_3D', 'BuEx', 'BuEx_3D', 'BuSpi', 'BuSpi_3D', 'BuPerC', 
+              'BuCf_3D', 'BuDep', 'BuDep_3D', 'BuGir', 'BuGir_3D', 'BuDisp', 'BuDisp_3D', 'BuRan', 'BuRan_3D', 'BuRough', 'BuRough_3D', 'BuSWA_3D', 'BuSurf_3D', 'BuVol_3D', 'BuSA_3D']:
         #buildings[i] = buildings[i].astype(float)
         df[[i+'_count',i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum' ,i+'_nunique',i+'_mode']] = momepy.describe_agg(selected_buildings[i], selected_buildings["station_id"])
         df[[i+'_IQR',i+'_MAD',i+'_skew']] = selected_buildings.groupby('station_id')[i].agg([iqr,median_abs_deviation,skew])
