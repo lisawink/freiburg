@@ -135,17 +135,17 @@ def block_params(buildings,height,streets):
  
     graph = momepy.gdf_to_nx(streets)
     graph = momepy.closeness_centrality(graph, radius=400, name="StrClo400", distance="mm_len", weight="mm_len")
-    graph = momepy.closeness_centrality(graph, radius=1200, name="StrClo1200", distance="mm_len", weight="mm_len")
+    #graph = momepy.closeness_centrality(graph, radius=1200, name="StrClo1200", distance="mm_len", weight="mm_len")
     graph = momepy.betweenness_centrality(graph, radius=400, name="StrBet400", distance="mm_len", weight="mm_len")
-    graph = momepy.betweenness_centrality(graph, radius=1200, name="StrBet1200", distance="mm_len", weight="mm_len")
+    #graph = momepy.betweenness_centrality(graph, radius=1200, name="StrBet1200", distance="mm_len", weight="mm_len")
     graph = momepy.meshedness(graph, radius=400, distance="mm_len", name="StrMes400")
-    graph = momepy.meshedness(graph, radius=1200, distance="mm_len", name="StrMes1200")
+    #graph = momepy.meshedness(graph, radius=1200, distance="mm_len", name="StrMes1200")
     graph = momepy.gamma(graph, radius=400, distance="mm_len", name="StrGam400")
-    graph = momepy.gamma(graph, radius=1200, distance="mm_len", name="StrGam1200")
+    #graph = momepy.gamma(graph, radius=1200, distance="mm_len", name="StrGam1200")
     graph = momepy.cyclomatic(graph, radius=400, distance="mm_len", name="StrCyc400")
-    graph = momepy.cyclomatic(graph, radius=1200, distance="mm_len", name="StrCyc1200")
+    #graph = momepy.cyclomatic(graph, radius=1200, distance="mm_len", name="StrCyc1200")
     graph = momepy.edge_node_ratio(graph, radius=400, distance="mm_len", name="StrENR400")
-    graph = momepy.edge_node_ratio(graph, radius=1200, distance="mm_len", name="StrENR1200")
+    #graph = momepy.edge_node_ratio(graph, radius=1200, distance="mm_len", name="StrENR1200")
     graph = momepy.node_degree(graph, name='StrDeg')
     graph = momepy.clustering(graph, name='StrSCl')
     #graph = momepy.betweenness_centrality(graph, name="StrBetGlo", mode="nodes", weight="mm_len") # will take ages
@@ -313,7 +313,7 @@ def aggregate_params(selected_buildings, selected_streets, selected_nodes, stati
         df[[i+'_count',i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum' ,i+'_nunique',i+'_mode']] = momepy.describe_agg(selected_streets[i], selected_streets["station_id"])
         df[[i+'_IQR',i+'_MAD',i+'_skew']] = selected_streets.groupby('station_id')[i].agg([iqr,median_abs_deviation,skew])
 
-    for i in ['StrClo400', 'StrClo1200', 'StrBet400', 'StrBet1200', 'StrMes400', 'StrMes1200', 'StrGam400', 'StrGam1200', 'StrCyc400', 'StrCyc1200', 'StrENR400', 'StrENR1200', 'StrDeg', 'StrSCl']:
+    for i in ['StrClo400', 'StrBet400', 'StrMes400', 'StrGam400', 'StrCyc400', 'StrENR400', 'StrDeg', 'StrSCl']:
         df[[i+'_count',i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum' ,i+'_nunique',i+'_mode']] = momepy.describe_agg(selected_nodes[i], selected_nodes["station_id"])
         df[[i+'_IQR',i+'_MAD',i+'_skew']] = selected_nodes.groupby('station_id')[i].agg([iqr,median_abs_deviation,skew])
 
