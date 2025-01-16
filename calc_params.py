@@ -219,8 +219,12 @@ def neighbourhood_graph_params(buildings, stations):
             ibd = momepy.mean_interbuilding_distance(ol_buildings, delaunay, ref_area_graph)
             ol_buildings['BuIBD'] = ibd
 
-        for k in ol_buildings.index:
-            overlapping.loc[k, ['BuAdj','BuIBD']] = ol_buildings.loc[k, ['BuAdj','BuIBD']]
+        overlapping.loc[ol_buildings.index, ['BuAdj', 'BuIBD']] = ol_buildings[['BuAdj', 'BuIBD']]
+
+    if 'BuAdj' not in overlapping.columns:
+        overlapping['BuAdj'] = None
+    if 'BuIBD' not in overlapping.columns:
+        overlapping['BuIBD'] = None
 
     bua = overlapping.groupby('station_id')['BuAdj'].mean()
     ibd = overlapping.groupby('station_id')['BuIBD'].mean()
@@ -270,18 +274,22 @@ def select_objects(buildings, streets, nodes, stations):
     joined_nodes['geometry'] = joined_nodes.geometry
 
     # Calculate the intersection area for each building-station pair
-    joined_buildings['intersection_area'] = joined_buildings.apply(
+    intersection_area = joined_buildings.apply(
         lambda row: row.geometry.intersection(stations.loc[row['index_right']].geometry).area, axis=1
     )
-    # Calculate the intersection area for each building-station pair
-    joined_streets['intersection_length'] = joined_streets.apply(
-        lambda row: row.geometry.intersection(stations.loc[row['index_right']].geometry).length, axis=1
-    )
+    if intersection_area.empty: 
+        joined_buildings['intersection_area'] = None
+    else:
+        joined_buildings['intersection_area'] = intersection_area
 
     # Calculate the intersection area for each building-station pair
-    joined_nodes['intersection_length'] = joined_nodes.apply(
+    intersection_length = joined_streets.apply(
         lambda row: row.geometry.intersection(stations.loc[row['index_right']].geometry).length, axis=1
     )
+    if intersection_length.empty:
+        joined_streets['intersection_length'] = None
+    else:
+        joined_streets['intersection_length'] = intersection_length
 
     # Calculate the percentage of each building's area that is within each station buffer
     joined_buildings['percentage_within_buffer'] = (joined_buildings['intersection_area'] / joined_buildings.geometry.area) * 100
@@ -348,13 +356,20 @@ def agg_raster(raster_path, stations, parameter_name):
         crs = src.crs
     stations = stations.to_crs(crs.to_epsg())
 
-    stats = zonal_stats(stations, raster_path, stats=['mean', 'max', 'min', 'count', 'std', 'median', 'sum', 'range','percentile_25','percentile_75'])
+    if stations.empty:
+        stations[parameter_name+'_mean'] = None
+        stations[parameter_name+'_std'] = None
+        stations[parameter_name+'_median'] = None
+        stations[parameter_name+'_IQR'] = None
 
-    stations[parameter_name] = stats
+    else:
+        stats = zonal_stats(stations, raster_path, stats=['mean', 'max', 'min', 'count', 'std', 'median', 'sum', 'range','percentile_25','percentile_75'])
 
-    stations[parameter_name+'_mean'] = stations[parameter_name].apply(lambda x: x['mean'])
-    stations[parameter_name+'_std'] = stations[parameter_name].apply(lambda x: x['std'])
-    stations[parameter_name+'_median'] = stations[parameter_name].apply(lambda x: x['median'])
-    stations[parameter_name+'_IQR'] = stations[parameter_name].apply(lambda x: x['percentile_75']) - stations[parameter_name].apply(lambda x: x['percentile_25'])
+        stations[parameter_name] = stats
+
+        stations[parameter_name+'_mean'] = stations[parameter_name].apply(lambda x: x['mean'])
+        stations[parameter_name+'_std'] = stations[parameter_name].apply(lambda x: x['std'])
+        stations[parameter_name+'_median'] = stations[parameter_name].apply(lambda x: x['median'])
+        stations[parameter_name+'_IQR'] = stations[parameter_name].apply(lambda x: x['percentile_75']) - stations[parameter_name].apply(lambda x: x['percentile_25'])
 
     return stations
