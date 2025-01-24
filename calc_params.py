@@ -1,5 +1,6 @@
 import pandas as pd
 import geopandas as gpd
+import numpy as np
 import momepy
 import libpysal
 import geoplanar
@@ -10,6 +11,8 @@ from scipy.stats import median_abs_deviation
 from scipy.stats import skew
 import rasterio
 from rasterstats import zonal_stats
+from scipy.stats import pearsonr, spearmanr
+from sklearn.feature_selection import mutual_info_regression
 
 def buffer_stations(stations, radius=100, input_crs='EPSG:4326', output_crs='EPSG:31468'):
     
@@ -104,6 +107,7 @@ def block_params(buildings,height,streets):
     bldgs['BuCorDev'] = momepy.squareness(bldgs)
 
     # proximity
+    bldgs['BuSW'] = momepy.shared_walls(bldgs)
     bldgs['BuSWR'] = momepy.shared_walls(bldgs)/bldgs['BuPer']
     bldgs['BuOri'] = momepy.orientation(bldgs)
 
@@ -312,20 +316,25 @@ def aggregate_params(selected_buildings, selected_streets, selected_nodes, stati
     df = pd.DataFrame()
     for i in ['BuAre','BuHt','BuPer','BuLAL','BuCCD_mean','BuCCD_std','BuCor','CyAre','CyInd','BuCCo','BuCWA','BuCon','BuElo','BuERI','BuFR','BuFF','BuFD','BuRec','BuShI','BuSqC','BuCorDev','BuSWR','BuOri','BuAli','StrAli',
               'BuCir', 'BuHem_3D', 'BuCon_3D', 'BuFra', 'BuFra_3D', 'BuCubo_3D', 'BuSqu', 'BuCube_3D', 'BumVE_3D', 'BuMVE_3D', 'BuFF_3D', 'BuEPI_3D', 'BuProx', 'BuProx_3D', 'BuEx', 'BuEx_3D', 'BuSpi', 'BuSpi_3D', 'BuPerC', 
-              'BuCf_3D', 'BuDep', 'BuDep_3D', 'BuGir', 'BuGir_3D', 'BuDisp', 'BuDisp_3D', 'BuRan', 'BuRan_3D', 'BuRough', 'BuRough_3D', 'BuSWA_3D', 'BuSurf_3D', 'BuVol_3D', 'BuSA_3D']:
+              'BuCf_3D', 'BuDep', 'BuDep_3D', 'BuGir', 'BuGir_3D', 'BuDisp', 'BuDisp_3D', 'BuRan', 'BuRan_3D', 'BuRough', 'BuRough_3D', 'BuSWA_3D', 'BuSurf_3D', 'BuVol_3D', 'BuSA_3D', 'BuSWR_3D']:
         #buildings[i] = buildings[i].astype(float)
-        df[[i+'_count',i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum' ,i+'_nunique',i+'_mode']] = momepy.describe_agg(selected_buildings[i], selected_buildings["station_id"])
+        df[[i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum',i+'_mode']] = momepy.describe_agg(selected_buildings[i], selected_buildings["station_id"], statistics=["mean", "median", "std", "min", "max", "sum", "mode"])
         df[[i+'_IQR',i+'_MAD',i+'_skew']] = selected_buildings.groupby('station_id')[i].agg([iqr,median_abs_deviation,skew])
+        df[[i+'_per25',i+'_per50',i+'_per75']] = selected_buildings.groupby('station_id')[i].quantile([0.25,0.5,0.75]).unstack()
+        df['BuNum'] = len(selected_buildings.groupby('station_id'))
 
     for i in ['StrLen', 'StrW', 'StrOpe', 'StrWD', 'StrH', 'StrHD', 'StrHW', 'BpM', 'StrLin', 'StrCNS']:
-        df[[i+'_count',i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum' ,i+'_nunique',i+'_mode']] = momepy.describe_agg(selected_streets[i], selected_streets["station_id"])
+        df[[i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum' ,i+'_mode']] = momepy.describe_agg(selected_streets[i], selected_streets["station_id"])
         df[[i+'_IQR',i+'_MAD',i+'_skew']] = selected_streets.groupby('station_id')[i].agg([iqr,median_abs_deviation,skew])
+        df[[i+'_per25',i+'_per50',i+'_per75']] = selected_buildings.groupby('station_id')[i].quantile([0.25,0.5,0.75]).unstack()
 
     for i in ['StrClo400', 'StrBet400', 'StrMes400', 'StrGam400', 'StrCyc400', 'StrENR400', 'StrDeg', 'StrSCl']:
-        df[[i+'_count',i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum' ,i+'_nunique',i+'_mode']] = momepy.describe_agg(selected_nodes[i], selected_nodes["station_id"])
+        df[[i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum' ,i+'_mode']] = momepy.describe_agg(selected_nodes[i], selected_nodes["station_id"])
         df[[i+'_IQR',i+'_MAD',i+'_skew']] = selected_nodes.groupby('station_id')[i].agg([iqr,median_abs_deviation,skew])
+        df[[i+'_per25',i+'_per50',i+'_per75']] = selected_buildings.groupby('station_id')[i].quantile([0.25,0.5,0.75]).unstack()
 
     stations = stations.merge(df, left_on='station_id', right_on=df.index, how='inner')
+    stations['BuCAR'] = stations['BuAre_sum']/stations.geometry.area
 
     return stations
 
@@ -373,3 +382,60 @@ def agg_raster(raster_path, stations, parameter_name):
         stations[parameter_name+'_IQR'] = stations[parameter_name].apply(lambda x: x['percentile_75']) - stations[parameter_name].apply(lambda x: x['percentile_25'])
 
     return stations
+
+# Function to calculate correlations and mutual information
+def calculate_statistics(data, target_column):
+    results = []
+    
+    # Ensure the target column exists
+    if target_column not in data.columns:
+        raise ValueError(f"Target column '{target_column}' not found in DataFrame.")
+
+    # Loop through each column except the target column
+    for col in data.columns:
+        if col == target_column:
+            continue
+
+        #print(f"Calculating statistics for '{col}'...")
+
+        # Drop NA values for pairwise comparison
+        valid_data = data[[col, target_column]].dropna()
+
+        if len(valid_data) <= 2:
+            # Append results
+            results.append({
+                'Parameter': col,
+                'Pearson Correlation': None,
+                'Pearson p-value': None,
+                'Spearman Correlation': None,
+                'Spearman p-value': None,
+                'Mutual Information': None
+            })
+        else:
+
+            x = valid_data[col]
+            y = valid_data[target_column]
+
+            # Calculate Pearson correlation
+            pearson_corr, pearson_pval = pearsonr(x, y)
+
+            # Calculate Spearman's rank correlation
+            spearman_corr, spearman_pval = spearmanr(x, y)
+
+            # Calculate mutual information
+            if len(x) < 4:
+                mi = None
+            else:
+                mi = mutual_info_regression(x.values.reshape(-1, 1), y)[0]
+
+            # Append results
+            results.append({
+                'Parameter': col,
+                'Pearson Correlation': pearson_corr,
+                'Pearson p-value': pearson_pval,
+                'Spearman Correlation': spearman_corr,
+                'Spearman p-value': spearman_pval,
+                'Mutual Information': mi
+            })
+
+    return pd.DataFrame(results)
