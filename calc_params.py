@@ -310,28 +310,71 @@ def select_objects(buildings, streets, nodes, stations):
     
     return selected_buildings, selected_streets, selected_nodes
 
-def aggregate_params(selected_buildings, selected_streets, selected_nodes, stations):
+def weighted_stats(group, i, weight):
+
+    weighted_mean = np.sum(group[i] * group[weight]) / np.sum(group[weight])
+    weighted_std = np.sqrt(np.sum(group[weight] * (group[i] - weighted_mean) ** 2) / np.sum(group[weight]))
+
+    # weighted median
+    sorted_group = group.sort_values(i)
+    cumulative_weight = sorted_group[weight].cumsum()
+    cutoff = sorted_group[weight].sum() / 2
+    weighted_median = sorted_group.loc[cumulative_weight >= cutoff, i].iloc[0]
+
+    # Weighted minimum and maximum
+    weighted_min = sorted_group.loc[sorted_group[weight].idxmin(), i]
+    weighted_max = sorted_group.loc[sorted_group[weight].idxmax(), i]
+
+    # Weighted sum
+    weighted_sum = np.sum(group[i] * group[weight])
+
+    # Weighted mode (most frequently occurring value by weight)
+    mode_idx = group.groupby(i)[weight].sum().idxmax()
+    weighted_mode = mode_idx
+
+    # Weighted 25th and 75th percentiles
+    q25_cutoff = sorted_group[weight].sum() * 0.25
+    q75_cutoff = sorted_group[weight].sum() * 0.75
+
+    weighted_q25 = sorted_group.loc[cumulative_weight >= q25_cutoff, i].iloc[0]
+    weighted_q75 = sorted_group.loc[cumulative_weight >= q75_cutoff, i].iloc[0]
+
+    return pd.Series({
+        'weighted_mean': weighted_mean,
+        'weighted_std': weighted_std,
+        'weighted_median': weighted_median,
+        'weighted_min': weighted_min,
+        'weighted_max': weighted_max,
+        'weighted_sum': weighted_sum,
+        'weighted_mode': weighted_mode,
+        'weighted_25th_percentile': weighted_q25,
+        'weighted_75th_percentile': weighted_q75,
+    })
+
+
+def aggregate_params(selected_buildings, selected_streets, selected_nodes, stations, weight='BuAre'):
     
     #station_df = pd.DataFrame()
     df = pd.DataFrame()
     for i in ['BuAre','BuHt','BuPer','BuLAL','BuCCD_mean','BuCCD_std','BuCor','CyAre','CyInd','BuCCo','BuCWA','BuCon','BuElo','BuERI','BuFR','BuFF','BuFD','BuRec','BuShI','BuSqC','BuCorDev','BuSWR','BuOri','BuAli','StrAli',
               'BuCir', 'BuHem_3D', 'BuCon_3D', 'BuFra', 'BuFra_3D', 'BuCubo_3D', 'BuSqu', 'BuCube_3D', 'BumVE_3D', 'BuMVE_3D', 'BuFF_3D', 'BuEPI_3D', 'BuProx', 'BuProx_3D', 'BuEx', 'BuEx_3D', 'BuSpi', 'BuSpi_3D', 'BuPerC', 
               'BuCf_3D', 'BuDep', 'BuDep_3D', 'BuGir', 'BuGir_3D', 'BuDisp', 'BuDisp_3D', 'BuRan', 'BuRan_3D', 'BuRough', 'BuRough_3D', 'BuSWA_3D', 'BuSurf_3D', 'BuVol_3D', 'BuSA_3D', 'BuSWR_3D']:
-        #buildings[i] = buildings[i].astype(float)
         df[[i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum',i+'_mode']] = momepy.describe_agg(selected_buildings[i], selected_buildings["station_id"], statistics=["mean", "median", "std", "min", "max", "sum", "mode"])
+        if i != 'BuAre':    
+            df[[i+'_wmean',i+'_wstd',i+'_wmedian',i+'_wmin',i+'_wmax',i+'_wsum',i+'_wmode','_wper25','_wper75']] = selected_buildings.groupby('station_id')[[i,weight]].apply(weighted_stats, i, weight)
         df[[i+'_IQR',i+'_MAD',i+'_skew']] = selected_buildings.groupby('station_id')[i].agg([iqr,median_abs_deviation,skew])
-        df[[i+'_per25',i+'_per50',i+'_per75']] = selected_buildings.groupby('station_id')[i].quantile([0.25,0.5,0.75]).unstack()
+        df[[i+'_per25',i+'_per75']] = selected_buildings.groupby('station_id')[i].quantile([0.25,0.75]).unstack()
         df['BuNum'] = len(selected_buildings.groupby('station_id'))
 
     for i in ['StrLen', 'StrW', 'StrOpe', 'StrWD', 'StrH', 'StrHD', 'StrHW', 'BpM', 'StrLin', 'StrCNS']:
-        df[[i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum' ,i+'_mode']] = momepy.describe_agg(selected_streets[i], selected_streets["station_id"])
+        df[[i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum' ,i+'_mode']] = momepy.describe_agg(selected_streets[i], selected_streets["station_id"], statistics=["mean", "median", "std", "min", "max", "sum", "mode"])
         df[[i+'_IQR',i+'_MAD',i+'_skew']] = selected_streets.groupby('station_id')[i].agg([iqr,median_abs_deviation,skew])
-        df[[i+'_per25',i+'_per50',i+'_per75']] = selected_buildings.groupby('station_id')[i].quantile([0.25,0.5,0.75]).unstack()
+        df[[i+'_per25',i+'_per75']] = selected_streets.groupby('station_id')[i].quantile([0.25,0.75]).unstack()
 
     for i in ['StrClo400', 'StrBet400', 'StrMes400', 'StrGam400', 'StrCyc400', 'StrENR400', 'StrDeg', 'StrSCl']:
-        df[[i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum' ,i+'_mode']] = momepy.describe_agg(selected_nodes[i], selected_nodes["station_id"])
+        df[[i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum' ,i+'_mode']] = momepy.describe_agg(selected_nodes[i], selected_nodes["station_id"], statistics=["mean", "median", "std", "min", "max", "sum", "mode"])
         df[[i+'_IQR',i+'_MAD',i+'_skew']] = selected_nodes.groupby('station_id')[i].agg([iqr,median_abs_deviation,skew])
-        df[[i+'_per25',i+'_per50',i+'_per75']] = selected_buildings.groupby('station_id')[i].quantile([0.25,0.5,0.75]).unstack()
+        df[[i+'_per25',i+'_per75']] = selected_nodes.groupby('station_id')[i].quantile([0.25,0.75]).unstack()
 
     stations = stations.merge(df, left_on='station_id', right_on=df.index, how='inner')
     stations['BuCAR'] = stations['BuAre_sum']/stations.geometry.area
