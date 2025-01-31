@@ -13,6 +13,7 @@ import rasterio
 from rasterstats import zonal_stats
 from scipy.stats import pearsonr, spearmanr
 from sklearn.feature_selection import mutual_info_regression
+import matplotlib.pyplot as plt
 
 def buffer_stations(stations, radius=100, input_crs='EPSG:4326', output_crs='EPSG:31468'):
     
@@ -361,7 +362,7 @@ def aggregate_params(selected_buildings, selected_streets, selected_nodes, stati
               'BuCf_3D', 'BuDep', 'BuDep_3D', 'BuGir', 'BuGir_3D', 'BuDisp', 'BuDisp_3D', 'BuRan', 'BuRan_3D', 'BuRough', 'BuRough_3D', 'BuSWA_3D', 'BuSurf_3D', 'BuVol_3D', 'BuSA_3D', 'BuSWR_3D']:
         df[[i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum',i+'_mode']] = momepy.describe_agg(selected_buildings[i], selected_buildings["station_id"], statistics=["mean", "median", "std", "min", "max", "sum", "mode"])
         if i != 'BuAre':    
-            df[[i+'_wmean',i+'_wstd',i+'_wmedian',i+'_wmin',i+'_wmax',i+'_wsum',i+'_wmode','_wper25','_wper75']] = selected_buildings.groupby('station_id')[[i,weight]].apply(weighted_stats, i, weight)
+            df[[i+'_wmean',i+'_wstd',i+'_wmedian',i+'_wmin',i+'_wmax',i+'_wsum',i+'_wmode',i+'_wper25',i+'_wper75']] = selected_buildings.groupby('station_id')[[i,weight]].apply(weighted_stats, i, weight)
         df[[i+'_IQR',i+'_MAD',i+'_skew']] = selected_buildings.groupby('station_id')[i].agg([iqr,median_abs_deviation,skew])
         df[[i+'_per25',i+'_per75']] = selected_buildings.groupby('station_id')[i].quantile([0.25,0.75]).unstack()
         df['BuNum'] = len(selected_buildings.groupby('station_id'))
@@ -426,8 +427,9 @@ def agg_raster(raster_path, stations, parameter_name):
 
     return stations
 
+
 # Function to calculate correlations and mutual information
-def calculate_statistics(data, target_column):
+def calculate_statistics(data, target_column, bootstrap = False):
     results = []
     
     # Ensure the target column exists
@@ -464,6 +466,10 @@ def calculate_statistics(data, target_column):
 
             # Calculate Spearman's rank correlation
             spearman_corr, spearman_pval = spearmanr(x, y)
+            if bootstrap:
+                bs = bootstrap(spearmanr, x, y)
+            else:
+                bs = {}
 
             # Calculate mutual information
             if len(x) < 4:
@@ -479,6 +485,77 @@ def calculate_statistics(data, target_column):
                 'Spearman Correlation': spearman_corr,
                 'Spearman p-value': spearman_pval,
                 'Mutual Information': mi
-            })
+            }.update(bs))
 
     return pd.DataFrame(results)
+
+def _ci_index(data):
+    lower = np.percentile(data, 2.5)
+    upper = np.percentile(data, 97.5)
+
+    index = (upper - lower) / (upper + lower)/2
+    return index
+
+def bootstrap(func, X, Y, n_bootstrap=1000):
+
+    # Step 1: Calculate observed  correlation
+    rho_obs, _ = func(X, Y)
+
+    # Step 2: Bootstrap  correlation
+    bootstrap_corr = []
+
+    for _ in range(n_bootstrap):
+        # Resample data with replacement
+        indices = np.random.choice(len(X), len(X), replace=True)
+        X_bootstrap = X[indices]
+        Y_bootstrap = Y[indices]
+        rho_boot, _ = spearmanr(X_bootstrap, Y_bootstrap)
+        bootstrap_corr.append(rho_boot)
+
+    # Step 3: Null distribution by permuting Y
+    n_null = n_bootstrap
+    null_corr = []
+
+    for _ in range(n_null):
+        Y_permuted = np.random.permutation(Y)  # Shuffle Y
+        rho_null, _ = spearmanr(X, Y_permuted)
+        null_corr.append(rho_null)
+
+    # Step 4: Calculate p-values
+    bootstrap_corr = np.array(bootstrap_corr)
+    null_corr = np.array(null_corr)
+
+    # Bootstrap p-value
+    p_bootstrap = np.mean(bootstrap_corr >= rho_obs)
+
+    # Null p-value
+    p_null = np.mean(null_corr >= rho_obs)
+
+    # Output results
+    results = {
+        "Observed correlation": rho_obs,
+        "Mean correlation (bootstrap)": np.mean(bootstrap_corr),
+        "Standard deviation (bootstrap)": np.std(bootstrap_corr),
+        "95% confidence interval (bootstrap)": np.percentile(bootstrap_corr, [2.5, 97.5]),
+        "95% confidence interval index (bootstrap)": _ci_index(bootstrap_corr),
+        "P-value (bootstrap)": p_bootstrap,
+        "P-value (null)": p_null
+    }
+
+    return results
+
+def plot(radius, param, temp, time):
+    vars = gpd.read_parquet(f'/Users/lisawink/Documents/paper1/data/processed_data/processed_station_params_{radius}.parquet')
+    vars.index = vars['station_id']
+    vars = vars.merge(temp[time], left_on='station_id', right_on='station_id',how='inner')
+
+    var = param
+
+    plt.scatter(vars[var], vars[time])
+    plt.xlabel(var)
+    plt.ylabel('Temperature')
+    plt.title(var+' vs Temperature')
+
+    for i, txt in enumerate(vars.index):
+        plt.annotate(txt, (vars[var][i], vars[time][i]))
+    plt.show()
