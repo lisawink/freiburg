@@ -15,9 +15,10 @@ from scipy.stats import pearsonr, spearmanr
 from sklearn.feature_selection import mutual_info_regression
 import matplotlib.pyplot as plt
 
-def buffer_stations(stations, radius=100, input_crs='EPSG:4326', output_crs='EPSG:31468'):
+def buffer_stations(stations, radius=100, input_crs='EPSG:4326', output_crs='EPSG:31468', lat_column = 'station_lat', lon_column = 'station_lon'):
     
-    geometry = [Point(xy) for xy in zip(stations['station_lon'], stations['station_lat'])]
+    
+    geometry = [Point(xy) for xy in zip(stations[lon_column], stations[lat_column])]
     stn_gdf = gpd.GeoDataFrame(stations, crs=input_crs, geometry=geometry)
     stn_gdf = stn_gdf.to_crs(output_crs)
     stn_gdf['geometry'] = stn_gdf.buffer(radius)
@@ -186,6 +187,8 @@ def neighbourhood_graph_params(buildings, stations):
         GeoDataFrame containing station parameters
     
     """
+    if 'station_id' not in stations.columns:
+        stations['station_id'] = stations.index
     
     buildings = geoplanar.trim_overlaps(buildings)
     overlapping = buildings.sjoin(stations,predicate='within',how='inner')
@@ -330,8 +333,8 @@ def weighted_stats(group, i, weight):
     weighted_sum = np.sum(group[i] * group[weight])
 
     # Weighted mode (most frequently occurring value by weight)
-    mode_idx = group.groupby(i)[weight].sum().idxmax()
-    weighted_mode = mode_idx
+    #mode_idx = group.groupby(i)[weight].sum().idxmax()
+    #weighted_mode = mode_idx
 
     # Weighted 25th and 75th percentiles
     q25_cutoff = sorted_group[weight].sum() * 0.25
@@ -347,7 +350,6 @@ def weighted_stats(group, i, weight):
         'weighted_min': weighted_min,
         'weighted_max': weighted_max,
         'weighted_sum': weighted_sum,
-        'weighted_mode': weighted_mode,
         'weighted_25th_percentile': weighted_q25,
         'weighted_75th_percentile': weighted_q75,
     })
@@ -362,7 +364,7 @@ def aggregate_params(selected_buildings, selected_streets, selected_nodes, stati
               'BuCf_3D', 'BuDep', 'BuDep_3D', 'BuGir', 'BuGir_3D', 'BuDisp', 'BuDisp_3D', 'BuRan', 'BuRan_3D', 'BuRough', 'BuRough_3D', 'BuSWA_3D', 'BuSurf_3D', 'BuVol_3D', 'BuSA_3D', 'BuSWR_3D']:
         df[[i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum',i+'_mode']] = momepy.describe_agg(selected_buildings[i], selected_buildings["station_id"], statistics=["mean", "median", "std", "min", "max", "sum", "mode"])
         if i != 'BuAre':    
-            df[[i+'_wmean',i+'_wstd',i+'_wmedian',i+'_wmin',i+'_wmax',i+'_wsum',i+'_wmode',i+'_wper25',i+'_wper75']] = selected_buildings.groupby('station_id')[[i,weight]].apply(weighted_stats, i, weight)
+            df[[i+'_wmean',i+'_wstd',i+'_wmedian',i+'_wmin',i+'_wmax',i+'_wsum',i+'_wper25',i+'_wper75']] = selected_buildings.groupby('station_id')[[i,weight]].apply(weighted_stats, i, weight)
         df[[i+'_IQR',i+'_MAD',i+'_skew']] = selected_buildings.groupby('station_id')[i].agg([iqr,median_abs_deviation,skew])
         df[[i+'_per25',i+'_per75']] = selected_buildings.groupby('station_id')[i].quantile([0.25,0.75]).unstack()
         df['BuNum'] = len(selected_buildings.groupby('station_id'))
