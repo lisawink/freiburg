@@ -480,14 +480,15 @@ def calculate_statistics(data, target_column, bootstrap = False):
                 mi = mutual_info_regression(x.values.reshape(-1, 1), y)[0]
 
             # Append results
-            results.append({
+            entry = {
                 'Parameter': col,
                 'Pearson Correlation': pearson_corr,
                 'Pearson p-value': pearson_pval,
                 'Spearman Correlation': spearman_corr,
                 'Spearman p-value': spearman_pval,
-                'Mutual Information': mi
-            }.update(bs))
+                'Mutual Information': mi}
+            entry.update(bs)
+            results.append(entry)
 
     return pd.DataFrame(results)
 
