@@ -507,6 +507,10 @@ def bootstrap(func, X, Y, n_bootstrap=1000):
     # Step 2: Bootstrap  correlation
     bootstrap_corr = []
 
+    #reset index 
+    X = X.reset_index(drop=True)
+    Y = Y.reset_index(drop=True)
+    
     for _ in range(n_bootstrap):
         # Resample data with replacement
         indices = np.random.choice(len(X), len(X), replace=True)
