@@ -1,4 +1,4 @@
-# Urban morphmetrics & Temperature in Freiburg
+# Urban Morphmetrics & Temperature in Freiburg
 
 Caution: code and repo in progress!
 
