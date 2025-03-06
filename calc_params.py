@@ -10,6 +10,7 @@ from scipy.stats import iqr
 from scipy.stats import median_abs_deviation
 from scipy.stats import skew
 import rasterio
+from rasterio import mask
 from rasterstats import zonal_stats
 from scipy.stats import pearsonr, spearmanr
 from sklearn.feature_selection import mutual_info_regression
@@ -33,17 +34,6 @@ def random_buffers(buildings, number=50, radius=100):
     random_building_buffers['geometry'] = random_building_buffers.centroid.buffer(radius)
     random_building_buffers.set_geometry('geometry', inplace=True)
     return random_building_buffers
-
-def random_buffers(buildings, number=50, radius=100):
-    """
-    Generates buffers of set radius around random buildings
-
-    """
-    random_building_buffers = buildings.sample(n=number)
-    random_building_buffers['geometry'] = random_building_buffers.centroid.buffer(radius)
-    random_building_buffers.set_geometry('geometry', inplace=True)
-    return random_building_buffers
-
 
 def block_params(buildings,height,streets):
 
@@ -236,8 +226,8 @@ def neighbourhood_graph_params(buildings, stations):
 
     bua = overlapping.groupby('station_id')['BuAdj'].mean()
     ibd = overlapping.groupby('station_id')['BuIBD'].mean()
-    stations = stations.merge(bua, left_on='station_id', right_on=bua.index)
-    stations = stations.merge(ibd, left_on='station_id', right_on=ibd.index)
+    stations = stations.merge(bua, left_on='station_id', right_on=bua.index, how='left')
+    stations = stations.merge(ibd, left_on='station_id', right_on=ibd.index, how='left')
     
     return stations
 
@@ -379,10 +369,43 @@ def aggregate_params(selected_buildings, selected_streets, selected_nodes, stati
         df[[i+'_IQR',i+'_MAD',i+'_skew']] = selected_nodes.groupby('station_id')[i].agg([iqr,median_abs_deviation,skew])
         df[[i+'_per25',i+'_per75']] = selected_nodes.groupby('station_id')[i].quantile([0.25,0.75]).unstack()
 
-    stations = stations.merge(df, left_on='station_id', right_on=df.index, how='inner')
+    stations = stations.merge(df, left_on='station_id', right_on=df.index, how='left')
     stations['BuCAR'] = stations['BuAre_sum']/stations.geometry.area
 
     return stations
+
+def mask_raster(raster_path, bldgs, new_path):
+    """
+    Masks a raster with building footprints
+
+    Parameters
+    ----------
+    raster_path : str
+        Path to the raster file
+    bldgs : GeoDataFrame
+        GeoDataFrame containing building footprints
+    new_path : str
+        Path to save the masked raster
+
+    """
+    with rasterio.open(raster_path) as src:
+        crs = src.crs
+        bldgs = bldgs.to_crs(crs.to_epsg())
+
+        out_image, out_transform = mask.mask(src, bldgs.geometry, crop=False,invert=True,filled=False)
+
+        # Define the metadata for the new file
+        out_meta = src.meta.copy()
+        out_meta.update({
+            "driver": "GTiff",
+            "height": out_image.shape[1],
+            "width": out_image.shape[2],
+            "transform": out_transform
+        })
+            
+        # Save the raster file to a different path
+        with rasterio.open(new_path, 'w', **out_meta) as dest:
+            dest.write(out_image)
 
 def agg_raster(raster_path, stations, parameter_name):
     """
