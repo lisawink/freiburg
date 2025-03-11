@@ -1,0 +1,9 @@
+# Ignore environment files
+.env
+
+# Ignore Jupyter checkpoints
+notebooks/.ipynb_checkpoints/
+
+# Ignore specific files
+notebooks/raster_svf.ipynb
+notebooks/split_raster.ipynb
