@@ -17,12 +17,18 @@ from sklearn.feature_selection import mutual_info_regression
 import matplotlib.pyplot as plt
 
 def buffer_stations(stations, radius=100, input_crs='EPSG:4326', output_crs='EPSG:31468', lat_column = 'station_lat', lon_column = 'station_lon'):
-    
-    
+        
     geometry = [Point(xy) for xy in zip(stations[lon_column], stations[lat_column])]
     stn_gdf = gpd.GeoDataFrame(stations, crs=input_crs, geometry=geometry)
     stn_gdf = stn_gdf.to_crs(output_crs)
     stn_gdf['geometry'] = stn_gdf.buffer(radius)
+    return stn_gdf
+
+def city_centre_distance(stations, city_centre, input_crs='EPSG:4326', output_crs='EPSG:31468', lat_column = 'station_lat', lon_column = 'station_lon'):
+    geometry = [Point(xy) for xy in zip(stations[lon_column], stations[lat_column])]
+    stn_gdf = gpd.GeoDataFrame(stations, crs=input_crs, geometry=geometry)
+    stn_gdf = stn_gdf.to_crs(output_crs)
+    stn_gdf['city_centre_distance'] = stn_gdf.distance(city_centre)
     return stn_gdf
 
 def random_buffers(buildings, number=50, radius=100):
@@ -351,7 +357,7 @@ def aggregate_params(selected_buildings, selected_streets, selected_nodes, stati
     df = pd.DataFrame()
     for i in ['BuAre','BuHt','BuPer','BuLAL','BuCCD_mean','BuCCD_std','BuCor','CyAre','CyInd','BuCCo','BuCWA','BuCon','BuElo','BuERI','BuFR','BuFF','BuFD','BuRec','BuShI','BuSqC','BuCorDev','BuSWR','BuOri','BuAli','StrAli',
               'BuCir', 'BuHem_3D', 'BuCon_3D', 'BuFra', 'BuFra_3D', 'BuCubo_3D', 'BuSqu', 'BuCube_3D', 'BumVE_3D', 'BuMVE_3D', 'BuFF_3D', 'BuEPI_3D', 'BuProx', 'BuProx_3D', 'BuEx', 'BuEx_3D', 'BuSpi', 'BuSpi_3D', 'BuPerC', 
-              'BuCf_3D', 'BuDep', 'BuDep_3D', 'BuGir', 'BuGir_3D', 'BuDisp', 'BuDisp_3D', 'BuRan', 'BuRan_3D', 'BuRough', 'BuRough_3D', 'BuSWA_3D', 'BuSurf_3D', 'BuVol_3D', 'BuSA_3D', 'BuSWR_3D']:
+              'BuCf_3D', 'BuDep', 'BuDep_3D', 'BuGir', 'BuGir_3D', 'BuDisp', 'BuDisp_3D', 'BuRan', 'BuRan_3D', 'BuRough', 'BuRough_3D', 'BuSWA_3D', 'BuSurf_3D', 'BuVol_3D', 'BuSA_3D', 'BuSWR_3D','BuEWA_3D','BuEWR_3D']:
         df[[i+'_mean',i+'_median',i+'_std',i+'_min',i+'_max',i+'_sum',i+'_mode']] = momepy.describe_agg(selected_buildings[i], selected_buildings["station_id"], statistics=["mean", "median", "std", "min", "max", "sum", "mode"])
         if i != 'BuAre':    
             df[[i+'_wmean',i+'_wstd',i+'_wmedian',i+'_wmin',i+'_wmax',i+'_wsum',i+'_wper25',i+'_wper75']] = selected_buildings.groupby('station_id')[[i,weight]].apply(weighted_stats, i, weight)
