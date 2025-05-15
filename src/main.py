@@ -413,7 +413,7 @@ def mask_raster(raster_path, bldgs, new_path):
         with rasterio.open(new_path, 'w', **out_meta) as dest:
             dest.write(out_image)
 
-def agg_raster(raster_path, stations, parameter_name):
+def agg_raster(raster_path, stations, parameter_name, majority=False):
     """
     Extracts the following parameters for each station:
     - Raster mean
@@ -429,7 +429,10 @@ def agg_raster(raster_path, stations, parameter_name):
         GeoDataFrame containing station buffers
     parameter_name : str
         Name of the raster parameter
-        
+    majority : bool, optional
+        If True, majority (mode) is calculated. The default is False.
+        Requires significantly more processing time
+
     Returns
     -------
     stations : GeoDataFrame
@@ -444,17 +447,34 @@ def agg_raster(raster_path, stations, parameter_name):
         stations[parameter_name+'_mean'] = None
         stations[parameter_name+'_std'] = None
         stations[parameter_name+'_median'] = None
+        stations[parameter_name+'_per25'] = None
+        stations[parameter_name+'_per75'] = None
         stations[parameter_name+'_IQR'] = None
+        stations[parameter_name+'_min'] = None
+        stations[parameter_name+'_max'] = None
+        stations[parameter_name+'_sum'] = None
+        if majority:
+            stations[parameter_name+'_majority'] = None
 
     else:
-        stats = zonal_stats(stations, raster_path, stats=['mean', 'max', 'min', 'count', 'std', 'median', 'sum', 'range','percentile_25','percentile_75'])
+        if majority:
+            stats = zonal_stats(stations, raster_path, stats=['mean', 'max', 'min', 'count', 'std', 'median', 'sum', 'range','percentile_25','percentile_75', 'majority'])
+        else:
+            stats = zonal_stats(stations, raster_path, stats=['mean', 'max', 'min', 'count', 'std', 'median', 'sum', 'range','percentile_25','percentile_75'])
 
         stations[parameter_name] = stats
 
         stations[parameter_name+'_mean'] = stations[parameter_name].apply(lambda x: x['mean'])
         stations[parameter_name+'_std'] = stations[parameter_name].apply(lambda x: x['std'])
         stations[parameter_name+'_median'] = stations[parameter_name].apply(lambda x: x['median'])
+        stations[parameter_name+'_per25'] = stations[parameter_name].apply(lambda x: x['percentile_25'])
+        stations[parameter_name+'_per75'] = stations[parameter_name].apply(lambda x: x['percentile_75'])
         stations[parameter_name+'_IQR'] = stations[parameter_name].apply(lambda x: x['percentile_75']) - stations[parameter_name].apply(lambda x: x['percentile_25'])
+        stations[parameter_name+'_min'] = stations[parameter_name].apply(lambda x: x['min'])
+        stations[parameter_name+'_max'] = stations[parameter_name].apply(lambda x: x['max'])
+        stations[parameter_name+'_sum'] = stations[parameter_name].apply(lambda x: x['sum'])
+        if majority:
+            stations[parameter_name+'_majority'] = stations[parameter_name].apply(lambda x: x['majority'])
 
     return stations
 
