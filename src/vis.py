@@ -1,6 +1,6 @@
 import os
 import sys
-import laptop.main_old as main_old
+import main
 import geopandas as gpd
 import pandas as pd
 from scipy.stats import pearsonr, spearmanr
@@ -24,7 +24,7 @@ def stats_multiple_times(radius, var, time):
 
     vars = gpd.read_parquet(f'/Users/lisawink/Documents/paper1/data/processed_data/processed_station_params_{radius}.parquet')
     vars.index = vars['station_id']
-    to_remove = ['station_id','station_no','station_name','station_long_name','station_type','station_lat','station_lon','station_elevation','mounting_structure','sky_view_factor','dominant_land_use','local_climate_zone','urban_atlas_class','urban_atlas_code','geometry','SVF_3D']
+    to_remove = ['station_id','station_no','station_name','station_long_name','station_type','station_lat','station_lon','mounting_structure','sky_view_factor','dominant_land_use','local_climate_zone','urban_atlas_class','urban_atlas_code','geometry','SVF_3D']
     vars = vars.drop(to_remove, axis=1)
     vars = vars.merge(temp, left_on='station_id', right_on='station_id',how='inner')
 
@@ -176,8 +176,8 @@ def simple_plot(ax, radius, var, time):
     ax.set_ylabel('Normalised Temperature (K)',fontsize=16)
     #ax.set_title(var+' vs Temperature'+' for '+str(radius)+'m radius')
 
-    for i, txt in enumerate(data['station_id'][:30]):
-        ax.annotate(txt, (data[var].iloc[i], data['temperature'].iloc[i]), color=lcz_colors[txt])
+    for i, txt in enumerate(data['station_id'].unique()):
+        ax.annotate(txt, (data[data['station_id'] == txt][var].iloc[0], data[data['station_id'] == txt]['temperature'].iloc[0]), color=lcz_colors[txt])
 
 def plot_seasons(ax, radius, var, hiwn, hispn, hisn, hian):
 

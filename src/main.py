@@ -5,7 +5,7 @@ import momepy
 import libpysal
 import geoplanar
 from itertools import combinations
-from shapely.geometry import Point
+from shapely.geometry import Point, Polygon
 from scipy.stats import iqr
 from scipy.stats import median_abs_deviation
 from scipy.stats import skew
@@ -15,6 +15,33 @@ from rasterstats import zonal_stats
 from scipy.stats import pearsonr, spearmanr
 from sklearn.feature_selection import mutual_info_regression
 import matplotlib.pyplot as plt
+
+def convert_to_point(stations, input_crs='EPSG:4326', output_crs='EPSG:31468', lat_column = 'station_lat', lon_column = 'station_lon'):
+    
+
+    """
+    Converts a DataFrame of station coordinates to a GeoDataFrame with Point geometries
+    Parameters
+    ----------
+    stations : DataFrame
+        DataFrame containing station coordinates
+    input_crs : str, optional
+        Input coordinate reference system (CRS) of the DataFrame. The default is 'EPSG:4326'.
+    output_crs : str, optional
+        Output coordinate reference system (CRS) for the GeoDataFrame. The default is 'EPSG:31468'.
+    lat_column : str, optional
+        Name of the column containing latitude values. The default is 'station_lat'.
+    lon_column : str, optional
+        Name of the column containing longitude values. The default is 'station_lon'.
+    Returns
+    -------
+    GeoDataFrame
+        A GeoDataFrame with Point geometries representing the station coordinates, transformed to the specified output CRS.
+    """    
+    geometry = [Point(xy) for xy in zip(stations[lon_column], stations[lat_column])]
+    stn_gdf = gpd.GeoDataFrame(stations, crs=input_crs, geometry=geometry)
+    stn_gdf = stn_gdf.to_crs(output_crs)
+    return stn_gdf
 
 def buffer_stations(stations, radius=100, input_crs='EPSG:4326', output_crs='EPSG:31468', lat_column = 'station_lat', lon_column = 'station_lon'):
         
@@ -40,6 +67,46 @@ def random_buffers(buildings, number=50, radius=100):
     random_building_buffers['geometry'] = random_building_buffers.centroid.buffer(radius)
     random_building_buffers.set_geometry('geometry', inplace=True)
     return random_building_buffers
+
+def make_compass_pie_slice(center, radius, compass_center_angle_deg, angle_width_deg, num_arc_points=30):
+    """
+    Create a pie slice centered on a compass angle (0° = North, 90° = East, etc.).
+    
+    Parameters:
+        center: shapely Point
+        radius: radius of the slice
+        compass_center_angle_deg: compass angle (0° = North, increases clockwise)
+        angle_width_deg: angular width of the slice (in degrees)
+        num_arc_points: number of arc points for smoothness
+        
+    Returns:
+        shapely Polygon representing the pie slice
+    """
+    # Compute start and end angles in compass degrees
+    half_width = angle_width_deg / 2
+    start_compass = compass_center_angle_deg - half_width
+    end_compass = compass_center_angle_deg + half_width
+
+    # Convert to mathematical angles (0° = East, CCW increase)
+    start_math = np.radians(90 - start_compass)
+    end_math = np.radians(90 - end_compass)
+
+    # Create arc points from start to end (CW on compass = CCW in math)
+    angles = np.linspace(start_math, end_math, num_arc_points)
+    arc = [(center.x + radius * np.cos(a), center.y + radius * np.sin(a)) for a in angles]
+
+    # Construct the polygon (sector)
+    coords = [center.coords[0]] + arc + [center.coords[0]]
+    return Polygon(coords)
+
+def convert_to_pie(stations, input_crs='EPSG:4326', output_crs='EPSG:31468', lat_column = 'station_lat', lon_column = 'station_lon', radius=100, compass_angle=0, angle_width=60):
+        
+    geometry = [Point(xy) for xy in zip(stations[lon_column], stations[lat_column])]
+    stn_gdf = gpd.GeoDataFrame(stations, crs=input_crs, geometry=geometry)
+    stn_gdf = stn_gdf.to_crs(output_crs)
+    sectors = [make_compass_pie_slice(geom, radius, compass_angle, angle_width) for geom in stn_gdf.geometry]
+    stn_gdf = gpd.GeoDataFrame(stations, crs=output_crs, geometry=sectors)
+    return stn_gdf
 
 def block_params(buildings,height,streets):
 
