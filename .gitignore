@@ -1,5 +1,6 @@
 # Ignore environment files
 .env
+.tif
 
 # Ignore Jupyter checkpoints
 notebooks/.ipynb_checkpoints/
