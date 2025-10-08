@@ -549,6 +549,7 @@ def agg_raster(raster_path, stations, parameter_name, majority=False):
 # Function to calculate correlations and mutual information
 def calculate_statistics(data, target_column, bootstrap = False):
     results = []
+    print(data)
     
     # Ensure the target column exists
     if target_column not in data.columns:
@@ -561,6 +562,22 @@ def calculate_statistics(data, target_column, bootstrap = False):
 
         #print(f"Calculating statistics for '{col}'...")
 
+        y = data[target_column]
+
+        std = y.std()
+        mean = y.mean()
+        FRKART = y[y.index == 'FRKART'].values[0]
+        FRPDAS = y[y.index == 'FRPDAS'].values[0]
+        FRINST = y[y.index == 'FRINST'].values[0]
+        FRHBHF = y[y.index == 'FRHBHF'].values[0]
+        FRHOCH = y[y.index == 'FRHOCH'].values[0] 
+        FROPFS = y[y.index == 'FROPFS'].values[0]
+        FRDIET = y[y.index == 'FRDIET'].values[0]
+        FRTIEN = y[y.index == 'FRTIEN'].values[0]
+        urban = np.mean([FRKART, FRPDAS, FRINST, FRHBHF])
+        rural = np.mean([FRHOCH, FROPFS, FRDIET, FRTIEN])
+        UHI_mag = urban - rural
+
         # Drop NA values for pairwise comparison
         valid_data = data[[col, target_column]].dropna()
 
@@ -572,10 +589,12 @@ def calculate_statistics(data, target_column, bootstrap = False):
                 'Pearson p-value': None,
                 'Spearman Correlation': None,
                 'Spearman p-value': None,
-                'Mutual Information': None
+                'Mutual Information': None,
+                'Temp. Mean': None,
+                'Temp. Std. Dev.': None,
+                'UHI Magnitude': None,
             })
         else:
-
             x = valid_data[col]
             y = valid_data[target_column]
 
@@ -602,7 +621,10 @@ def calculate_statistics(data, target_column, bootstrap = False):
                 'Pearson p-value': pearson_pval,
                 'Spearman Correlation': spearman_corr,
                 'Spearman p-value': spearman_pval,
-                'Mutual Information': mi}
+                'Mutual Information': mi,
+                'Temp. Mean': mean,
+                'Temp. Std. Dev.': std,
+                'UHI Magnitude': UHI_mag}
             entry.update(bs)
             results.append(entry)
 

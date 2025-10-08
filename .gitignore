@@ -4,6 +4,21 @@
 # Ignore Jupyter checkpoints
 notebooks/.ipynb_checkpoints/
 
+#Ignore folders
+notebooks/PCA/
+notebooks/LR/
+notebooks/RF/
+notebooks/archive/
+notebooks/daytime_case/
+laptop/
+
+
 # Ignore specific files
 notebooks/raster_svf.ipynb
 notebooks/split_raster.ipynb
+
+.DS_Store
+notebooks/SVF_street_1.tif
+notebooks/merged_raster_no_overlap.tif
+notebooks/visualisations/scales_multitimes copy.ipynb
+src/__pycache__/

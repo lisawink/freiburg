@@ -11,14 +11,8 @@ from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 
 
-def stats_multiple_times(radius, var, time):
+def stats_multiple_times(radius, var, time, temp):
 
-    temp =  pd.read_csv('/Users/lisawink/Documents/paper1/data/gap_filled_data_ta_rh.csv')
-    temp['datetime_UTC']=pd.to_datetime(temp['datetime_UTC'])
-    temp = temp[temp['variable']=='Ta_deg_C']
-    temp['datetime_UTC'] = temp['datetime_UTC'].astype(str)
-    temp = temp[temp['data_type'] == 'observed']
-    temp = temp.pivot(index='station_id', columns='datetime_UTC', values='value')
     temp = temp.sub(temp.mean(axis=0), axis=1)
     temp = temp.div(temp.std(axis=0), axis=1)
 
@@ -27,6 +21,11 @@ def stats_multiple_times(radius, var, time):
     to_remove = ['station_id','station_no','station_name','station_long_name','station_type','station_lat','station_lon','mounting_structure','sky_view_factor','dominant_land_use','local_climate_zone','urban_atlas_class','urban_atlas_code','geometry','SVF_3D']
     vars = vars.drop(to_remove, axis=1)
     vars = vars.merge(temp, left_on='station_id', right_on='station_id',how='inner')
+
+    vars["BuAdj"] = -vars["BuAdj"]  # Invert BuAdj values
+
+    if var == 'BuIBD':
+        vars = vars.drop(['FRTIEN'], axis=0)  # Remove BuAdj if var is BuIBD
 
     #scaler = StandardScaler()
     #vars_scaled = scaler.fit_transform(vars)
@@ -45,8 +44,13 @@ def stats_multiple_times(radius, var, time):
         cooks_d = np.nan
         mi = [np.nan]
         y_pred = np.nan
+        mean = np.nan
+        std = np.nan
     
     else:
+        mean = data[var].mean()
+        std = data[var].std()
+        
         # Compute Spearman correlation
         spearman_corr, p_value = spearmanr(data[var], data['temperature'])
 
@@ -75,7 +79,7 @@ def stats_multiple_times(radius, var, time):
 
         mi = mutual_info_regression(data[[var]], data['temperature'].values)
 
-    return data, spearman_corr, p_value, pearson_corr, r_squared, rmse, cooks_d, mi[0], y_pred
+    return data, mean, std, spearman_corr, p_value, pearson_corr, r_squared, rmse, cooks_d, mi[0], y_pred
 
 def define_lcz_colors():
     # Data as a list of dictionaries
@@ -178,6 +182,29 @@ def simple_plot(ax, radius, var, time):
 
     for i, txt in enumerate(data['station_id'].unique()):
         ax.annotate(txt, (data[data['station_id'] == txt][var].iloc[0], data[data['station_id'] == txt]['temperature'].iloc[0]), color=lcz_colors[txt])
+
+def simple_plot_reduced(ax, radius, var, time, temp):
+
+    data, mean, std, spearman_corr, p_value, pearson_corr, r_squared, rmse, cooks_d, mi, y_pred = stats_multiple_times(radius, var, time, temp)
+
+    print(f"Spearman ρ: {spearman_corr:.2f}\nMutual Info.: {mi:.2f}")
+
+    # Add textbox with correlation and Cook’s distance
+    textstr = f"Spearman ρ: {spearman_corr:.2f}\nMutual Info.: {mi:.2f}"
+    ax.text(0.6, 0.05, textstr, transform=ax.transAxes, fontsize=12,
+            bbox=dict(boxstyle="round,pad=0.3", edgecolor='grey', facecolor='none'))
+
+    lcz_colors = define_lcz_colors()
+    colors = [lcz_colors[station] for station in data['station_id']]  # Assign colors to each station
+    ax.scatter(data[var], data['temperature'], marker ='x', c=colors, alpha =0.5, label = data['station_id'])
+    #ax.plot(data[var], y_pred, color='black', linewidth=1)  # Plot regression
+    ax.set_xlabel(var,fontsize=16)
+    ax.set_ylabel('Standardised Temperature',fontsize=16)
+    #ax.set_title(var+' vs Temperature'+' for '+str(radius)+'m radius')
+
+    for i, txt in enumerate(data['station_id'].unique()):
+        ax.annotate(txt, (data[data['station_id'] == txt][var].iloc[0], data[data['station_id'] == txt]['temperature'].iloc[0]), color=lcz_colors[txt])
+
 
 def plot_seasons(ax, radius, var, hiwn, hispn, hisn, hian):
 
