@@ -20,12 +20,13 @@ def stats_multiple_times(radius, var, time, temp):
     vars.index = vars['station_id']
     to_remove = ['station_id','station_no','station_name','station_long_name','station_type','station_lat','station_lon','mounting_structure','sky_view_factor','dominant_land_use','local_climate_zone','urban_atlas_class','urban_atlas_code','geometry','SVF_3D']
     vars = vars.drop(to_remove, axis=1)
+    vars.index = vars.index.str[2:]
     vars = vars.merge(temp, left_on='station_id', right_on='station_id',how='inner')
 
     vars["BuAdj"] = -vars["BuAdj"]  # Invert BuAdj values
 
     if var == 'BuIBD':
-        vars = vars.drop(['FRTIEN'], axis=0)  # Remove BuAdj if var is BuIBD
+        vars = vars.drop(['TIEN'], axis=0)  # Remove BuAdj if var is BuIBD
 
     #scaler = StandardScaler()
     #vars_scaled = scaler.fit_transform(vars)
@@ -190,7 +191,10 @@ def simple_plot_reduced(ax, radius, var, time, temp):
     print(f"Spearman ρ: {spearman_corr:.2f}\nMutual Info.: {mi:.2f}")
 
     # Add textbox with correlation and Cook’s distance
-    textstr = f"Spearman ρ: {spearman_corr:.2f}\nMutual Info.: {mi:.2f}"
+    textstr = (
+        fr'$\rho_{{fix,300,\langle UHI\rangle}} = {spearman_corr:.2f}$' '\n'
+        fr'$\mathrm{{MI}}_{{fix,300,\langle UHI\rangle}} = {mi:.2f}$'
+    )
     ax.text(0.6, 0.05, textstr, transform=ax.transAxes, fontsize=12,
             bbox=dict(boxstyle="round,pad=0.3", edgecolor='grey', facecolor='none'))
 
@@ -198,7 +202,21 @@ def simple_plot_reduced(ax, radius, var, time, temp):
     colors = [lcz_colors[station] for station in data['station_id']]  # Assign colors to each station
     ax.scatter(data[var], data['temperature'], marker ='x', c=colors, alpha =0.5, label = data['station_id'])
     #ax.plot(data[var], y_pred, color='black', linewidth=1)  # Plot regression
-    ax.set_xlabel(var,fontsize=16)
+
+    var_name_mapping = {
+        'BuAre_sum': '$\it{A_B}$ (m$^2$)',
+        'BuVol_3D_sum': '$\it{V_B}$ (m$^3$)',
+        'BuEWA_3D_sum': '$\it{A_F}$ (m$^2$)',
+        'BuIBD': '$\it{IBD}$ (m)', 
+        'BuAdj': '$\it{Adj}$',
+        'BuSWR_3D_median': '$\it{SWR}$',
+        'BuHt_wmean': '$\it{H_B^A}$ (m)',
+        'StrHW_median': '$\it{H/W}$',
+        'SVF_3D_mean': '$\it{SVF}$',
+        'BuERI_mode': '$\it{ERI}$',
+        'StrClo400_median': '$\it{C}$'}
+
+    ax.set_xlabel(var_name_mapping[var],fontsize=16)
     ax.set_ylabel('Standardised Temperature',fontsize=16)
     #ax.set_title(var+' vs Temperature'+' for '+str(radius)+'m radius')
 

@@ -549,7 +549,7 @@ def agg_raster(raster_path, stations, parameter_name, majority=False):
 # Function to calculate correlations and mutual information
 def calculate_statistics(data, target_column, bootstrap = False):
     results = []
-    print(data)
+    #print(data)
     
     # Ensure the target column exists
     if target_column not in data.columns:
